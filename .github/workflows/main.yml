@@ -1,0 +1,40 @@
+name: Windows RDP via Playit
+
+on:
+  workflow_dispatch
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+    - name: Download Playit CLI
+      run: |
+        Invoke-WebRequest https://playit.gg/downloads/playit-win-x64.exe -OutFile playit.exe
+        Invoke-WebRequest https://raw.githubusercontent.com/AtlasFn/atlas-server/main/start.bat -OutFile start.bat
+
+    - name: Enable RDP
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+    - name: Start Playit Tunnel (in background)
+      run: |
+        $env:PLAYIT_AGENT_KEY = "${{ secrets.PLAYIT_AGENT_KEY }}"
+        Start-Process -FilePath ".\playit.exe" -ArgumentList "run", "--agent-key", $env:PLAYIT_AGENT_KEY, "--no-gui", "--tunnel", "rdp:tcp:3389"
+        Start-Sleep -Seconds 10  # дать время на регистрацию туннеля
+
+    - name: Fetch and Display Connection Info
+      run: |
+        # Playit не выводит URL напрямую в консоль без API или GUI,
+        # но вы можете получить его через их dashboard: https://playit.gg/dashboard
+        # Поэтому просто подтверждаем запуск.
+        Write-Host "✅ Playit agent запущен. Проверьте туннель в https://playit.gg/dashboard"
+        Write-Host "RDP должен быть доступен через назначенный вами хост (например, xxxx.playit.gg:port)"
+
+    - name: Keep Alive (optional)
+      run: |
+        Invoke-WebRequest https://github.com/AtlasFn/atlas-server/raw/main/loop.ps1 -OutFile loop.ps1
+        ./loop.ps1
